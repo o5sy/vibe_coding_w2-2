@@ -1,0 +1,111 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# GitHub 관리 규칙 (GitHub Management Rules)
+
+## Pull Request 관리
+
+### PR 생성 규칙
+- **브랜치 네이밍**: `feature/TASK-XXX-description`, `bugfix/TASK-XXX-description`, `hotfix/TASK-XXX-description`
+- **제목 형식**: `[TASK-XXX] 작업 내용 요약`
+- **설명 템플릿**:
+  ```markdown
+  ## 개요
+  이 PR에서 수행한 작업에 대한 간단한 설명
+
+  ## 변경사항
+  - [ ] 변경사항 1
+  - [ ] 변경사항 2
+
+  ## 테스트
+  - [ ] 단위 테스트 통과
+  - [ ] 통합 테스트 통과
+  - [ ] 수동 테스트 완료
+
+  ## 체크리스트
+  - [ ] 코드 리뷰 요청
+  - [ ] 문서 업데이트 (필요시)
+  - [ ] 테스트 코드 작성/업데이트
+  ```
+
+### 라벨 시스템
+- `type: feature` - 새로운 기능 추가
+- `type: bugfix` - 버그 수정
+- `type: hotfix` - 긴급 수정
+- `type: refactor` - 코드 리팩토링
+- `type: docs` - 문서 업데이트
+- `priority: high` - 높은 우선순위
+- `priority: medium` - 보통 우선순위
+- `priority: low` - 낮은 우선순위
+- `status: in-review` - 리뷰 중
+- `status: ready-to-merge` - 머지 준비 완료
+
+## 이슈 관리
+
+### 이슈 생성 규칙
+- **제목 형식**: `[타입] 이슈 제목`
+- **타입**: `Bug`, `Feature`, `Enhancement`, `Question`, `Documentation`
+- **설명 템플릿**:
+  ```markdown
+  ## 설명
+  이슈에 대한 자세한 설명
+
+  ## 재현 단계 (버그인 경우)
+  1. 단계 1
+  2. 단계 2
+  3. 단계 3
+
+  ## 예상 결과
+  예상되는 동작 설명
+
+  ## 실제 결과
+  실제 발생한 동작 설명
+
+  ## 환경
+  - OS: 
+  - Python 버전:
+  - 브라우저 (해당시):
+
+  ## 추가 정보
+  스크린샷, 로그 등
+  ```
+
+### 이슈 라벨 시스템
+- `type: bug` - 버그 리포트
+- `type: feature` - 기능 요청
+- `type: enhancement` - 개선 사항
+- `type: question` - 질문
+- `type: documentation` - 문서 관련
+- `priority: critical` - 치명적 이슈
+- `priority: high` - 높은 우선순위
+- `priority: medium` - 보통 우선순위
+- `priority: low` - 낮은 우선순위
+- `status: triage` - 분류 필요
+- `status: in-progress` - 진행 중
+- `status: blocked` - 차단됨
+- `status: duplicate` - 중복
+- `status: wontfix` - 수정하지 않음
+
+### 자동 할당 규칙
+- **백엔드 관련**: FastAPI, LangGraph 관련 이슈는 백엔드 담당자에게 자동 할당
+- **프론트엔드 관련**: Streamlit, UI 관련 이슈는 프론트엔드 담당자에게 자동 할당
+- **문서 관련**: 문서 업데이트는 문서 담당자에게 자동 할당
+
+## 워크플로우
+
+### 개발 워크플로우
+1. 이슈 생성 → 자동 라벨링 및 할당
+2. 브랜치 생성 (`feature/TASK-XXX-description`)
+3. 개발 진행
+4. PR 생성 → 자동 라벨링, 할당, 리뷰어 지정
+5. 코드 리뷰 및 CI/CD 통과
+6. 머지 및 브랜치 삭제
+
+### 브랜치 전략
+- `main`: 프로덕션 브랜치
+- `develop`: 개발 브랜치 (현재 프로젝트에서는 main 브랜치만 사용)
+- `feature/*`: 기능 개발 브랜치
+- `bugfix/*`: 버그 수정 브랜치
+- `hotfix/*`: 긴급 수정 브랜치

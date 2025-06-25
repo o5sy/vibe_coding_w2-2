@@ -1,0 +1,192 @@
+name: Issue Auto Labeler
+
+on:
+  issues:
+    types: [opened, edited]
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Auto label issue
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const { number: issue_number } = context.issue;
+            const issue = context.payload.issue;
+
+            const title = issue.title.toLowerCase();
+            const body = (issue.body || '').toLowerCase();
+
+            let labels = [];
+
+            // 타입 라벨 결정
+            if (title.includes('bug') || title.includes('error') || title.includes('문제') || 
+                title.includes('오류') || body.includes('expected') || body.includes('actual')) {
+              labels.push('type: bug');
+            } else if (title.includes('feature') || title.includes('기능') || 
+                       title.includes('add') || title.includes('추가') ||
+                       body.includes('would like') || body.includes('request')) {
+              labels.push('type: feature');
+            } else if (title.includes('enhancement') || title.includes('improve') || 
+                       title.includes('개선') || title.includes('향상') ||
+                       title.includes('better') || title.includes('optimize')) {
+              labels.push('type: enhancement');
+            } else if (title.includes('question') || title.includes('질문') || 
+                       title.includes('how to') || title.includes('help') ||
+                       title.includes('도움') || body.includes('how can i')) {
+              labels.push('type: question');
+            } else if (title.includes('doc') || title.includes('문서') || 
+                       title.includes('readme') || title.includes('guide')) {
+              labels.push('type: documentation');
+            }
+
+            // 우선순위 라벨 결정
+            if (title.includes('critical') || title.includes('urgent') || 
+                title.includes('긴급') || title.includes('치명적') ||
+                title.includes('production') || title.includes('security')) {
+              labels.push('priority: critical');
+            } else if (title.includes('high') || title.includes('important') || 
+                       title.includes('높음') || title.includes('중요') ||
+                       body.includes('asap') || body.includes('urgent')) {
+              labels.push('priority: high');
+            } else if (title.includes('low') || title.includes('minor') || 
+                       title.includes('낮음') || title.includes('사소') ||
+                       title.includes('nice to have') || title.includes('whenever')) {
+              labels.push('priority: low');
+            } else {
+              labels.push('priority: medium');
+            }
+
+            // 영역 라벨 결정
+            const backendKeywords = ['fastapi', 'api', 'server', 'backend', 'langgraph', 'agent', 'llm', 'database'];
+            const frontendKeywords = ['streamlit', 'ui', 'frontend', 'interface', 'display', 'css', 'html'];
+            const docKeywords = ['documentation', 'docs', 'readme', 'guide', 'manual', 'wiki'];
+            const testKeywords = ['test', 'testing', 'pytest', 'unittest', 'coverage'];
+            const cicdKeywords = ['deploy', 'ci', 'cd', 'action', 'workflow', 'docker', 'build'];
+
+            if (backendKeywords.some(keyword => title.includes(keyword) || body.includes(keyword))) {
+              labels.push('area: backend');
+            }
+
+            if (frontendKeywords.some(keyword => title.includes(keyword) || body.includes(keyword))) {
+              labels.push('area: frontend');
+            }
+
+            if (docKeywords.some(keyword => title.includes(keyword) || body.includes(keyword))) {
+              labels.push('area: documentation');
+            }
+
+            if (testKeywords.some(keyword => title.includes(keyword) || body.includes(keyword))) {
+              labels.push('area: testing');
+            }
+
+            if (cicdKeywords.some(keyword => title.includes(keyword) || body.includes(keyword))) {
+              labels.push('area: ci-cd');
+            }
+
+            // 상태 라벨
+            labels.push('status: triage');
+
+            // 특별 라벨
+            if (title.includes('duplicate') || body.includes('duplicate')) {
+              labels.push('status: duplicate');
+            }
+
+            if (title.includes('help wanted') || body.includes('help wanted') ||
+                body.includes('contribution') || body.includes('contribute')) {
+              labels.push('help wanted');
+            }
+
+            if (title.includes('good first issue') || body.includes('beginner') ||
+                body.includes('easy') || body.includes('simple')) {
+              labels.push('good first issue');
+            }
+
+            // 플랫폼 라벨
+            if (body.includes('windows') || body.includes('win')) {
+              labels.push('platform: windows');
+            }
+
+            if (body.includes('mac') || body.includes('darwin') || body.includes('osx')) {
+              labels.push('platform: macos');
+            }
+
+            if (body.includes('linux') || body.includes('ubuntu') || body.includes('debian')) {
+              labels.push('platform: linux');
+            }
+
+            // 중복 제거
+            labels = [...new Set(labels)];
+
+            console.log('Applying labels:', labels);
+
+            // 라벨 적용
+            try {
+              if (labels.length > 0) {
+                await github.rest.issues.addLabels({
+                  owner,
+                  repo,
+                  issue_number,
+                  labels
+                });
+              }
+              
+              console.log('Labels applied successfully');
+              
+              // 라벨링 결과 댓글
+              const labelingMessage = `## 🏷️ 자동 라벨링 완료
+
+              다음 라벨들이 자동으로 적용되었습니다:
+
+              ### 📋 적용된 라벨
+              ${labels.map(label => `- \`${label}\``).join('\n')}
+
+              ### 🔍 라벨 분류 기준
+              **타입**: 제목과 내용의 키워드를 분석하여 결정
+              **우선순위**: 긴급도와 중요도 키워드를 기반으로 설정
+              **영역**: 기술 스택과 관련 키워드로 분류
+              **상태**: 초기 상태를 'triage'로 설정
+
+              ### ⚙️ 라벨 수정
+              라벨이 부정확하다면 언제든지 수동으로 수정해주세요:
+              1. 이슈 페이지의 'Labels' 섹션 클릭
+              2. 부적절한 라벨 제거
+              3. 적절한 라벨 추가
+
+              ### 📞 도움이 필요하시나요?
+              라벨링에 대한 질문이나 개선 제안이 있으시면 댓글로 알려주세요!
+
+              ---
+              *이 댓글은 자동으로 생성되었습니다.*`;
+
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number,
+                body: labelingMessage
+              });
+              
+            } catch (error) {
+              console.log('Labeling failed:', error.message);
+              
+              // 라벨링 실패시 댓글로 알림
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number,
+                body: `## 🏷️ 자동 라벨링 정보
+
+                **감지된 특성:**
+                - 제목 키워드 분석 결과
+                - 내용 키워드 분석 결과
+                
+                **제안 라벨:** ${labels.join(', ')}
+                
+                라벨을 수동으로 추가해주세요.
+                
+                ---
+                *이 댓글은 자동으로 생성되었습니다.*`
+              });
+            }

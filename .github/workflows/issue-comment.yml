@@ -1,0 +1,223 @@
+name: Issue Auto Comment
+
+on:
+  issues:
+    types: [opened, reopened, labeled]
+
+jobs:
+  comment:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Welcome comment on new issue
+        if: github.event.action == 'opened'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const { number: issue_number } = context.issue;
+            const { login: author } = context.payload.issue.user;
+            const issue = context.payload.issue;
+
+            const welcomeMessage = `## 👋 이슈를 생성해주셔서 감사합니다!
+
+            안녕하세요 @${author}님! 이슈를 제출해주셔서 감사합니다.
+
+            ### 📋 이슈 처리 과정
+            1. **분류**: 자동으로 라벨이 지정되고 담당자가 할당됩니다
+            2. **검토**: 담당자가 이슈를 검토하고 우선순위를 결정합니다
+            3. **진행**: 개발 계획에 따라 작업이 진행됩니다
+            4. **완료**: 작업 완료 후 이슈가 닫힙니다
+
+            ### 🔍 자동 분류 결과
+            **이슈 유형**: ${issue.title.toLowerCase().includes('bug') ? '🐛 버그' : 
+                           issue.title.toLowerCase().includes('feature') ? '✨ 기능 요청' : 
+                           issue.title.toLowerCase().includes('enhancement') ? '🚀 개선사항' : 
+                           issue.title.toLowerCase().includes('question') ? '❓ 질문' : 
+                           issue.title.toLowerCase().includes('doc') ? '📚 문서' : '📝 일반'}
+
+            ### ⏰ 예상 응답 시간
+            - **버그**: 1-2일 내 응답
+            - **기능 요청**: 3-5일 내 응답  
+            - **질문**: 24시간 내 응답
+            - **문서**: 2-3일 내 응답
+
+            ### 📞 추가 정보가 필요한 경우
+            더 자세한 정보가 필요하면 댓글로 요청드릴 수 있습니다. 빠른 해결을 위해 다음 정보를 미리 준비해주세요:
+
+            - 🖥️ **환경 정보**: OS, Python 버전, 브라우저 등
+            - 📸 **스크린샷**: 문제 상황의 스크린샷
+            - 📝 **로그**: 에러 메시지나 관련 로그
+            - 🔄 **재현 단계**: 문제를 재현할 수 있는 단계별 설명
+
+            ---
+            *이 댓글은 자동으로 생성되었습니다.*`;
+
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number,
+              body: welcomeMessage
+            });
+
+      - name: Comment on issue reopen
+        if: github.event.action == 'reopened'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const { number: issue_number } = context.issue;
+
+            const reopenMessage = `## 🔄 이슈가 다시 열렸습니다
+
+            이슈가 다시 열렸습니다. 담당자가 확인하고 적절한 조치를 취하겠습니다.
+
+            **재오픈 시간**: ${new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}
+
+            ### 📋 다음 단계
+            1. 담당자가 이슈 상태를 재검토합니다
+            2. 필요시 추가 정보를 요청할 수 있습니다
+            3. 해결 방안을 다시 검토합니다
+
+            ---
+            *이 댓글은 자동으로 생성되었습니다.*`;
+
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number,
+              body: reopenMessage
+            });
+
+      - name: Comment on priority labeling
+        if: github.event.action == 'labeled' && contains(github.event.label.name, 'priority:')
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const { number: issue_number } = context.issue;
+            const labelName = context.payload.label.name;
+
+            let priorityInfo = '';
+            let expectedTime = '';
+
+            if (labelName === 'priority: critical') {
+              priorityInfo = '🚨 **치명적 우선순위**로 분류되었습니다';
+              expectedTime = '즉시 처리 예정';
+            } else if (labelName === 'priority: high') {
+              priorityInfo = '🔥 **높은 우선순위**로 분류되었습니다';
+              expectedTime = '1-2일 내 처리 예정';
+            } else if (labelName === 'priority: medium') {
+              priorityInfo = '📋 **보통 우선순위**로 분류되었습니다';
+              expectedTime = '1주일 내 처리 예정';
+            } else if (labelName === 'priority: low') {
+              priorityInfo = '📝 **낮은 우선순위**로 분류되었습니다';
+              expectedTime = '시간 여유가 있을 때 처리 예정';
+            }
+
+            const priorityMessage = `## 🏷️ 우선순위가 설정되었습니다
+
+            ${priorityInfo}
+
+            **예상 처리 시간**: ${expectedTime}
+
+            우선순위는 다음 요소들을 고려하여 결정됩니다:
+            - 🎯 비즈니스 영향도
+            - 👥 사용자 영향 범위  
+            - 🔧 기술적 복잡도
+            - 📅 릴리스 일정
+
+            ---
+            *이 댓글은 자동으로 생성되었습니다.*`;
+
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number,
+              body: priorityMessage
+            });
+
+      - name: Comment on bug label
+        if: |
+          github.event.action == 'labeled' && 
+          github.event.label.name == 'type: bug'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const { number: issue_number } = context.issue;
+
+            const bugMessage = `## 🐛 버그로 분류되었습니다
+
+            이 이슈가 버그로 분류되었습니다. 빠른 해결을 위해 다음 정보를 확인해주세요:
+
+            ### 📋 버그 리포트 체크리스트
+            - [ ] **재현 단계**가 명확히 기술되어 있나요?
+            - [ ] **예상 결과**와 **실제 결과**가 구분되어 있나요?
+            - [ ] **환경 정보** (OS, Python 버전 등)가 포함되어 있나요?
+            - [ ] **에러 메시지**나 **로그**가 첨부되어 있나요?
+            - [ ] **스크린샷**이나 **동영상**이 있다면 도움이 됩니다
+
+            ### 🔍 디버깅 도움말
+            문제 해결에 도움이 되는 추가 정보:
+            1. **브라우저 개발자 도구** 콘솔 메시지
+            2. **네트워크 탭**에서 실패한 요청
+            3. **백엔드 로그** (해당하는 경우)
+            4. **특정 데이터**나 **입력값**으로만 발생하는지 여부
+
+            ### ⚡ 임시 해결방법
+            가능한 임시 해결방법이 있다면 공유해드리겠습니다.
+
+            ---
+            *이 댓글은 자동으로 생성되었습니다.*`;
+
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number,
+              body: bugMessage
+            });
+
+      - name: Comment on feature request
+        if: |
+          github.event.action == 'labeled' && 
+          github.event.label.name == 'type: feature'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const { number: issue_number } = context.issue;
+
+            const featureMessage = `## ✨ 기능 요청으로 분류되었습니다
+
+            새로운 기능 요청을 해주셔서 감사합니다! 
+
+            ### 📋 기능 요청 검토 과정
+            1. **요구사항 분석**: 기능의 필요성과 범위를 검토합니다
+            2. **기술적 검토**: 구현 가능성과 복잡도를 평가합니다
+            3. **우선순위 결정**: 다른 작업들과의 우선순위를 결정합니다
+            4. **개발 계획**: 구현 일정을 수립합니다
+
+            ### 💡 기능 요청 개선을 위한 질문
+            더 나은 기능을 만들기 위해 다음 사항들을 고려해주세요:
+
+            - **사용 사례**: 어떤 상황에서 이 기능을 사용하시나요?
+            - **현재 문제점**: 현재 어떤 불편함이 있나요?
+            - **예상 사용빈도**: 얼마나 자주 사용할 것 같나요?
+            - **대안**: 다른 방법으로 해결할 수 있는 방법이 있나요?
+            - **UI/UX**: 어떤 방식으로 동작하면 좋을까요?
+
+            ### 🎯 구현 우선순위 요소
+            - 📊 사용자 요청 빈도
+            - 🎯 비즈니스 가치
+            - 🔧 구현 복잡도
+            - 📅 로드맵 적합성
+
+            ---
+            *이 댓글은 자동으로 생성되었습니다.*`;
+
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number,
+              body: featureMessage
+            });

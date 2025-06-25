@@ -1,0 +1,160 @@
+name: Issue Auto Assigner
+
+on:
+  issues:
+    types: [opened, labeled]
+
+jobs:
+  assign:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Auto assign issue
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const { number: issue_number } = context.issue;
+            const issue = context.payload.issue;
+
+            const title = issue.title.toLowerCase();
+            const body = (issue.body || '').toLowerCase();
+            const labels = issue.labels.map(label => label.name.toLowerCase());
+
+            let assignees = [];
+            let assignmentReason = '';
+
+            // 키워드 기반 자동 할당
+            const backendKeywords = ['fastapi', 'api', 'server', 'backend', 'langgraph', 'agent', 'llm'];
+            const frontendKeywords = ['streamlit', 'ui', 'frontend', 'interface', 'display'];
+            const docKeywords = ['documentation', 'docs', 'readme', 'guide', 'manual'];
+            const devopsKeywords = ['deploy', 'ci', 'cd', 'action', 'workflow', 'docker'];
+
+            // 백엔드 관련 이슈 체크
+            const hasBackendKeywords = backendKeywords.some(keyword => 
+              title.includes(keyword) || body.includes(keyword)
+            );
+
+            // 프론트엔드 관련 이슈 체크
+            const hasFrontendKeywords = frontendKeywords.some(keyword => 
+              title.includes(keyword) || body.includes(keyword)
+            );
+
+            // 문서 관련 이슈 체크
+            const hasDocKeywords = docKeywords.some(keyword => 
+              title.includes(keyword) || body.includes(keyword)
+            );
+
+            // DevOps 관련 이슈 체크
+            const hasDevOpsKeywords = devopsKeywords.some(keyword => 
+              title.includes(keyword) || body.includes(keyword)
+            );
+
+            // 라벨 기반 할당
+            const hasBackendLabel = labels.some(label => 
+              label.includes('backend') || label.includes('api')
+            );
+
+            const hasFrontendLabel = labels.some(label => 
+              label.includes('frontend') || label.includes('ui')
+            );
+
+            const hasDocLabel = labels.some(label => 
+              label.includes('documentation') || label.includes('docs')
+            );
+
+            // 할당 로직 (실제 사용시 GitHub 사용자명으로 변경 필요)
+            if (hasBackendKeywords || hasBackendLabel) {
+              // assignees.push('backend-maintainer');
+              assignmentReason = '백엔드 관련 키워드/라벨이 감지되었습니다';
+              console.log('Backend issue detected - would assign to backend maintainer');
+            } else if (hasFrontendKeywords || hasFrontendLabel) {
+              // assignees.push('frontend-maintainer');
+              assignmentReason = '프론트엔드 관련 키워드/라벨이 감지되었습니다';
+              console.log('Frontend issue detected - would assign to frontend maintainer');
+            } else if (hasDocKeywords || hasDocLabel) {
+              // assignees.push('docs-maintainer');
+              assignmentReason = '문서 관련 키워드/라벨이 감지되었습니다';
+              console.log('Documentation issue detected - would assign to docs maintainer');
+            } else if (hasDevOpsKeywords) {
+              // assignees.push('devops-maintainer');
+              assignmentReason = 'DevOps 관련 키워드가 감지되었습니다';
+              console.log('DevOps issue detected - would assign to devops maintainer');
+            }
+
+            // 우선순위 기반 추가 할당
+            const isCritical = labels.includes('priority: critical') || 
+                             title.includes('critical') || 
+                             title.includes('urgent') ||
+                             title.includes('긴급');
+
+            if (isCritical) {
+              // assignees.push('project-lead');  // 프로젝트 리드 추가
+              assignmentReason += ' (긴급 이슈로 프로젝트 리드 추가 할당)';
+              console.log('Critical issue - would also assign to project lead');
+            }
+
+            // 기본 할당자 (아무도 할당되지 않은 경우)
+            if (assignees.length === 0) {
+              assignees.push(owner);
+              assignmentReason = '기본 할당자 (프로젝트 소유자)';
+            }
+
+            // 중복 제거
+            assignees = [...new Set(assignees)];
+
+            // 이슈 작성자는 할당자에서 제외
+            assignees = assignees.filter(assignee => assignee !== issue.user.login);
+
+            console.log('Final assignees:', assignees);
+            console.log('Assignment reason:', assignmentReason);
+
+            // 실제 할당 (사용자가 존재할 때만)
+            try {
+              if (assignees.length > 0) {
+                await github.rest.issues.addAssignees({
+                  owner,
+                  repo,
+                  issue_number,
+                  assignees
+                });
+                console.log('Assigned:', assignees);
+              }
+            } catch (error) {
+              console.log('Assignment failed (users might not exist):', error.message);
+            }
+
+            // 할당 정보 댓글
+            const assignmentMessage = `## 🤖 자동 할당 완료
+
+            **할당 근거**: ${assignmentReason}
+
+            ### 🔍 감지된 키워드/라벨
+            ${hasBackendKeywords || hasBackendLabel ? '- 🔧 백엔드 관련\n' : ''}
+            ${hasFrontendKeywords || hasFrontendLabel ? '- 🎨 프론트엔드 관련\n' : ''}
+            ${hasDocKeywords || hasDocLabel ? '- 📚 문서 관련\n' : ''}
+            ${hasDevOpsKeywords ? '- ⚙️ DevOps 관련\n' : ''}
+            ${isCritical ? '- 🚨 긴급 이슈\n' : ''}
+
+            ### 📋 담당자 역할
+            할당된 담당자는 다음 작업을 수행합니다:
+            1. **이슈 검토**: 내용과 요구사항 파악
+            2. **우선순위 설정**: 다른 작업과의 우선순위 조정
+            3. **진행 상황 업데이트**: 정기적인 상태 업데이트
+            4. **해결 방안 제시**: 구체적인 해결 계획 수립
+
+            ### ⏰ 예상 응답 시간
+            - **긴급 이슈**: 4시간 내
+            - **일반 이슈**: 24-48시간 내
+            - **기능 요청**: 3-5일 내
+
+            담당자가 적절하지 않다고 생각되시면 언제든지 재할당을 요청해주세요.
+
+            ---
+            *이 댓글은 자동으로 생성되었습니다.*`;
+
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number,
+              body: assignmentMessage
+            });

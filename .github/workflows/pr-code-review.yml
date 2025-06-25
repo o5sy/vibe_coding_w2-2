@@ -1,0 +1,197 @@
+name: PR Auto Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  code-review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 black isort mypy bandit safety
+
+      - name: Run code quality checks
+        id: code-quality
+        run: |
+          echo "## 🔍 코드 품질 검사 결과" > review_comments.md
+          echo "" >> review_comments.md
+
+          # Black 포맷팅 체크
+          echo "### 📝 코드 포맷팅 (Black)" >> review_comments.md
+          if black --check --diff . > black_output.txt 2>&1; then
+            echo "✅ 코드 포맷팅이 올바릅니다." >> review_comments.md
+          else
+            echo "❌ 코드 포맷팅을 수정해주세요:" >> review_comments.md
+            echo '```diff' >> review_comments.md
+            head -20 black_output.txt >> review_comments.md
+            echo '```' >> review_comments.md
+          fi
+          echo "" >> review_comments.md
+
+          # Import 정렬 체크
+          echo "### 📦 Import 정렬 (isort)" >> review_comments.md
+          if isort --check-only --diff . > isort_output.txt 2>&1; then
+            echo "✅ Import 정렬이 올바릅니다." >> review_comments.md
+          else
+            echo "❌ Import 정렬을 수정해주세요:" >> review_comments.md
+            echo '```diff' >> review_comments.md
+            head -20 isort_output.txt >> review_comments.md
+            echo '```' >> review_comments.md
+          fi
+          echo "" >> review_comments.md
+
+          # Flake8 린팅
+          echo "### 🔧 코드 린팅 (Flake8)" >> review_comments.md
+          if flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics > flake8_output.txt 2>&1; then
+            echo "✅ 심각한 린팅 오류가 없습니다." >> review_comments.md
+          else
+            echo "❌ 다음 린팅 오류를 수정해주세요:" >> review_comments.md
+            echo '```' >> review_comments.md
+            cat flake8_output.txt >> review_comments.md
+            echo '```' >> review_comments.md
+          fi
+          echo "" >> review_comments.md
+
+          # 보안 체크 (Bandit)
+          echo "### 🔒 보안 검사 (Bandit)" >> review_comments.md
+          if bandit -r . -f json > bandit_output.json 2>/dev/null; then
+            HIGH_ISSUES=$(cat bandit_output.json | python3 -c "import json,sys;data=json.load(sys.stdin);print(len([r for r in data.get('results',[]) if r.get('issue_severity')=='HIGH']))")
+            MEDIUM_ISSUES=$(cat bandit_output.json | python3 -c "import json,sys;data=json.load(sys.stdin);print(len([r for r in data.get('results',[]) if r.get('issue_severity')=='MEDIUM']))")
+            
+            if [ "$HIGH_ISSUES" -eq 0 ] && [ "$MEDIUM_ISSUES" -eq 0 ]; then
+              echo "✅ 보안 이슈가 발견되지 않았습니다." >> review_comments.md
+            else
+              echo "⚠️ 보안 이슈가 발견되었습니다:" >> review_comments.md
+              echo "- 높음: $HIGH_ISSUES개" >> review_comments.md
+              echo "- 보통: $MEDIUM_ISSUES개" >> review_comments.md
+              echo "" >> review_comments.md
+              echo "자세한 내용은 Actions 로그를 확인해주세요." >> review_comments.md
+            fi
+          else
+            echo "✅ 보안 검사를 완료했습니다." >> review_comments.md
+          fi
+          echo "" >> review_comments.md
+
+          # 종속성 보안 체크 (Safety)
+          echo "### 🛡️ 종속성 보안 검사 (Safety)" >> review_comments.md
+          if find . -name "requirements*.txt" -exec safety check -r {} \; > safety_output.txt 2>&1; then
+            echo "✅ 알려진 보안 취약점이 없습니다." >> review_comments.md
+          else
+            echo "⚠️ 보안 취약점이 있는 패키지가 발견되었습니다:" >> review_comments.md
+            echo '```' >> review_comments.md
+            head -10 safety_output.txt >> review_comments.md
+            echo '```' >> review_comments.md
+          fi
+
+      - name: Analyze code complexity
+        run: |
+          echo "" >> review_comments.md
+          echo "### 🧮 코드 복잡도 분석" >> review_comments.md
+
+          # 파이썬 파일들의 라인 수 체크
+          PYTHON_FILES=$(find . -name "*.py" -not -path "./venv/*" -not -path "./.venv/*" | wc -l)
+          TOTAL_LINES=$(find . -name "*.py" -not -path "./venv/*" -not -path "./.venv/*" -exec wc -l {} + | tail -1 | awk '{print $1}')
+
+          echo "- Python 파일 수: $PYTHON_FILES개" >> review_comments.md
+          echo "- 총 코드 라인 수: $TOTAL_LINES줄" >> review_comments.md
+
+          # 큰 파일들 찾기
+          echo "" >> review_comments.md
+          echo "**큰 파일들 (200줄 이상):**" >> review_comments.md
+          find . -name "*.py" -not -path "./venv/*" -not -path "./.venv/*" -exec wc -l {} + | sort -nr | head -5 | while read lines file; do
+            if [ "$lines" -gt 200 ]; then
+              echo "- $file: ${lines}줄" >> review_comments.md
+            fi
+          done
+
+      - name: Check for common issues
+        run: |
+          echo "" >> review_comments.md
+          echo "### ⚠️ 일반적인 이슈 체크" >> review_comments.md
+
+          # TODO/FIXME 찾기
+          TODO_COUNT=$(grep -r "TODO\|FIXME\|XXX" --include="*.py" . | wc -l || echo "0")
+          echo "- TODO/FIXME 주석: ${TODO_COUNT}개" >> review_comments.md
+
+          # print 문 찾기 (로깅 대신 print 사용)
+          PRINT_COUNT=$(grep -r "print(" --include="*.py" . | grep -v "__pycache__" | wc -l || echo "0")
+          if [ "$PRINT_COUNT" -gt 0 ]; then
+            echo "- ⚠️ print() 문 발견: ${PRINT_COUNT}개 (로깅 사용을 권장합니다)" >> review_comments.md
+          fi
+
+          # 하드코딩된 비밀번호나 키 패턴 체크
+          SECRET_PATTERNS="password\|secret\|key\|token\|api_key"
+          SECRET_COUNT=$(grep -ri "$SECRET_PATTERNS" --include="*.py" . | grep -v "__pycache__" | grep -E "(=|:)" | wc -l || echo "0")
+          if [ "$SECRET_COUNT" -gt 0 ]; then
+            echo "- ⚠️ 잠재적 비밀정보 하드코딩: ${SECRET_COUNT}개 (환경변수 사용을 권장합니다)" >> review_comments.md
+          fi
+
+      - name: Generate code review suggestions
+        run: |
+          echo "" >> review_comments.md
+          echo "### 💡 개선 제안" >> review_comments.md
+          echo "" >> review_comments.md
+
+          # 파일 변경사항 기반 제안
+          echo "**코드 품질 향상을 위한 제안:**" >> review_comments.md
+          echo "1. 🧪 테스트 커버리지를 높여보세요" >> review_comments.md
+          echo "2. 📝 독스트링을 추가하여 코드 문서화를 개선해보세요" >> review_comments.md
+          echo "3. 🔧 타입 힌트를 추가하여 코드 안정성을 높여보세요" >> review_comments.md
+          echo "4. 🚀 성능이 중요한 부분에는 프로파일링을 고려해보세요" >> review_comments.md
+          echo "5. 🔒 민감한 정보는 환경변수로 관리해보세요" >> review_comments.md
+          echo "" >> review_comments.md
+          echo "---" >> review_comments.md
+          echo "*이 리뷰는 자동으로 생성되었습니다. 추가 질문이 있으시면 언제든지 댓글로 알려주세요!*" >> review_comments.md
+
+      - name: Post code review
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            const { owner, repo } = context.repo;
+            const { number: pull_number } = context.issue;
+
+            // 리뷰 댓글 읽기
+            const reviewContent = fs.readFileSync('review_comments.md', 'utf8');
+
+            // 기존 봇 댓글 찾기
+            const { data: comments } = await github.rest.issues.listComments({
+              owner,
+              repo,
+              issue_number: pull_number
+            });
+
+            const botComment = comments.find(comment => 
+              comment.user.type === 'Bot' && 
+              comment.body.includes('🔍 코드 품질 검사 결과')
+            );
+
+            if (botComment) {
+              // 기존 댓글 업데이트
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: botComment.id,
+                body: reviewContent
+              });
+            } else {
+              // 새 댓글 생성
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: pull_number,
+                body: reviewContent
+              });
+            }

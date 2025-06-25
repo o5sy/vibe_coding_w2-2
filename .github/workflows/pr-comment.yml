@@ -1,0 +1,73 @@
+name: PR Auto Comment
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  comment:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Welcome Comment on PR
+        if: github.event.action == 'opened'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const { number: issue_number } = context.issue;
+            const { login: author } = context.payload.pull_request.user;
+
+            const welcomeMessage = `## 🎉 Pull Request 생성을 환영합니다!
+
+            안녕하세요 @${author}님! PR을 생성해주셔서 감사합니다.
+
+            ### 📋 체크리스트
+            PR이 머지되기 전에 다음 사항들을 확인해주세요:
+
+            - [ ] 코드가 프로젝트 스타일 가이드를 따르고 있나요?
+            - [ ] 모든 테스트가 통과하나요?
+            - [ ] 새로운 기능에 대한 테스트가 추가되었나요?
+            - [ ] 문서가 업데이트되었나요? (필요한 경우)
+            - [ ] 변경사항이 breaking change인가요?
+
+            ### 🔍 자동 검사
+            - ✅ 자동 테스트가 실행됩니다
+            - ✅ 코드 품질 검사가 진행됩니다
+            - ✅ 자동 라벨링이 적용됩니다
+
+            ### 📞 도움이 필요하시나요?
+            질문이나 도움이 필요하시면 언제든지 댓글로 알려주세요!
+
+            ---
+            *이 댓글은 자동으로 생성되었습니다.*`;
+
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number,
+              body: welcomeMessage
+            });
+
+      - name: Update Comment on Sync
+        if: github.event.action == 'synchronize'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const { number: issue_number } = context.issue;
+
+            const updateMessage = `## 🔄 PR이 업데이트되었습니다!
+
+            새로운 커밋이 푸시되었습니다. 자동 테스트가 다시 실행됩니다.
+
+            **업데이트 시간**: ${new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}
+
+            ---
+            *이 댓글은 자동으로 생성되었습니다.*`;
+
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number,
+              body: updateMessage
+            });

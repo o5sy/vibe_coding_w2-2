@@ -1,0 +1,139 @@
+name: PR Auto Assigner
+
+on:
+  pull_request:
+    types: [opened, ready_for_review]
+
+jobs:
+  assign:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Auto assign PR
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const { number: pull_number } = context.issue;
+            const pr = context.payload.pull_request;
+
+            // PR 파일 변경사항 가져오기
+            const { data: files } = await github.rest.pulls.listFiles({
+              owner,
+              repo,
+              pull_number
+            });
+
+            const changedFiles = files.map(file => file.filename);
+            console.log('Changed files:', changedFiles);
+
+            // 파일 경로에 따른 자동 할당 로직
+            let assignees = [];
+            let reviewers = [];
+
+            // 백엔드 관련 파일 체크
+            const backendFiles = changedFiles.filter(file => 
+              file.startsWith('backend/') || 
+              file.includes('fastapi') || 
+              file.includes('langgraph') ||
+              file.includes('requirements.txt')
+            );
+
+            // 프론트엔드 관련 파일 체크
+            const frontendFiles = changedFiles.filter(file => 
+              file.startsWith('frontend/') || 
+              file.includes('streamlit')
+            );
+
+            // 문서 관련 파일 체크
+            const docFiles = changedFiles.filter(file => 
+              file.startsWith('docs/') || 
+              file.endsWith('.md') ||
+              file.startsWith('.cursor/rules/')
+            );
+
+            // GitHub Actions 관련 파일 체크
+            const ciFiles = changedFiles.filter(file => 
+              file.startsWith('.github/') ||
+              file.includes('workflow')
+            );
+
+            // 할당 로직 (실제 사용시 GitHub 사용자명으로 변경 필요)
+            if (backendFiles.length > 0) {
+              // assignees.push('backend-maintainer');
+              console.log('Backend files detected - would assign to backend maintainer');
+            }
+
+            if (frontendFiles.length > 0) {
+              // assignees.push('frontend-maintainer');
+              console.log('Frontend files detected - would assign to frontend maintainer');
+            }
+
+            if (docFiles.length > 0) {
+              // assignees.push('docs-maintainer');
+              console.log('Documentation files detected - would assign to docs maintainer');
+            }
+
+            if (ciFiles.length > 0) {
+              // assignees.push('devops-maintainer');
+              console.log('CI/CD files detected - would assign to devops maintainer');
+            }
+
+            // 기본 할당자 (프로젝트 소유자)
+            if (assignees.length === 0) {
+              assignees.push(owner);
+            }
+
+            // 중복 제거
+            assignees = [...new Set(assignees)];
+            reviewers = [...new Set(reviewers)];
+
+            // PR 작성자는 할당자에서 제외
+            assignees = assignees.filter(assignee => assignee !== pr.user.login);
+            reviewers = reviewers.filter(reviewer => reviewer !== pr.user.login);
+
+            console.log('Final assignees:', assignees);
+            console.log('Final reviewers:', reviewers);
+
+            // 실제 할당 (사용자가 존재할 때만)
+            try {
+              if (assignees.length > 0) {
+                await github.rest.issues.addAssignees({
+                  owner,
+                  repo,
+                  issue_number: pull_number,
+                  assignees
+                });
+                console.log('Assigned:', assignees);
+              }
+              
+              if (reviewers.length > 0) {
+                await github.rest.pulls.requestReviewers({
+                  owner,
+                  repo,
+                  pull_number,
+                  reviewers
+                });
+                console.log('Requested reviews from:', reviewers);
+              }
+            } catch (error) {
+              console.log('Assignment failed (users might not exist):', error.message);
+              
+              // 할당 실패시 댓글로 알림
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: pull_number,
+                body: `## 🤖 자동 할당 정보
+
+                **변경된 파일 유형:**
+                ${backendFiles.length > 0 ? '- 🔧 백엔드 파일\n' : ''}
+                ${frontendFiles.length > 0 ? '- 🎨 프론트엔드 파일\n' : ''}
+                ${docFiles.length > 0 ? '- 📚 문서 파일\n' : ''}
+                ${ciFiles.length > 0 ? '- ⚙️ CI/CD 파일\n' : ''}
+                
+                적절한 리뷰어를 수동으로 지정해주세요.
+                
+                ---
+                *이 댓글은 자동으로 생성되었습니다.*`
+              });
+            }
